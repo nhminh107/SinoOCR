@@ -1,114 +1,86 @@
-# Công cụ Gán nhãn Vùng OCR Cục bộ (Sino-Nom / Tiếng Việt)
+# Sino Studio
 
-Ứng dụng desktop cục bộ bằng **Tkinter + Pillow (`tk.Canvas`)** phục vụ phát hiện vùng chữ bằng **PP-OCRv6** (`PP-OCRv6_medium_det` qua `paddle` trên `gpu:0`), gom nhóm thành cột dọc / dòng ngang theo góc nhìn hiện tại, chỉnh sửa thủ công, đánh số thứ tự đọc hàng loạt và lưu JSON kèm thông tin nguồn gốc (provenance).
+Giao diện web cục bộ để duyệt và hiệu chỉnh vùng chữ Hán – Việt. Backend dùng model **PP-OCRv6_medium_det** trên **GPU** trong môi trường `OCR_Env`. Frontend dùng HTML, CSS và JavaScript thuần; không cần cài thêm framework.
 
----
+## Chạy ứng dụng
 
-## 1. Lệnh chạy chuẩn trong môi trường `OCR_Env`
-
-Chạy từ thư mục gốc dự án `/home/nhminh/AI_Project/NLP_OCR_Sino`:
+Từ thư mục gốc dự án:
 
 ```bash
 /home/nhminh/miniconda3/envs/OCR_Env/bin/python -m source.region_tool
 ```
 
-Tuỳ chọn dòng lệnh:
+Mở địa chỉ được in ra terminal, mặc định là `http://127.0.0.1:8765`. Ứng dụng cũng tự mở trình duyệt. Dừng bằng `Ctrl+C` trong terminal.
 
 ```bash
-# Chỉ định thư mục ảnh cụ thể và thư mục lưu annotation
+# Không tự mở trình duyệt hoặc dùng cổng khác
+/home/nhminh/miniconda3/envs/OCR_Env/bin/python -m source.region_tool --no-browser --port 8766
+
+# Chọn thư mục ảnh và nơi lưu kết quả
 /home/nhminh/miniconda3/envs/OCR_Env/bin/python -m source.region_tool \
   data/01_QuocTrieuHuongKhoaLuc data/02_TuLiemDaiKhoaLuc \
   --output-dir outputs/regions
-
-# Xem trợ giúp CLI (không khởi tạo Tkinter hay load model)
-/home/nhminh/miniconda3/envs/OCR_Env/bin/python -m source.region_tool --help
 ```
 
-Chạy kiểm thử (`unittest` thư viện chuẩn):
+Mặc định duyệt **215 ảnh Quốc triều** và **29 ảnh Từ Liêm**, sắp xếp theo số trang tự nhiên. Ảnh nguồn luôn được giữ nguyên. Trên cửa sổ hẹp, dùng nút danh sách tài liệu và nút thuộc tính ở thanh đầu để mở hai bảng phụ.
+
+## Quy trình sử dụng
+
+1. Chọn ảnh trong danh sách. Chọn **Cột dọc** hoặc **Dòng ngang** ở tab **Đánh số & Gom**; xoay góc nhìn nếu cần.
+2. Bấm **Nhận diện vùng**. Model chạy nền trên ảnh hiện tại. Kết quả thô và các vùng đã sửa được lưu riêng; nếu ảnh đã có vùng, chọn thay thế, giữ vùng cũ hoặc hủy.
+3. Duyệt bbox: vẽ mới, kéo di chuyển, kéo các nút góc/cạnh để đổi kích thước, chia, gộp hoặc xóa. Có thể bật **Raw OCR** để đối chiếu vùng máy phát hiện.
+4. Đánh số hàng loạt: đặt **Số bắt đầu** và **Chiều đọc**, chọn công cụ **Đánh số**, rồi kéo khung qua các bbox cần đánh số. Hoặc chọn nhiều vùng rồi bấm **Đánh số vùng chọn**. Số được tính theo góc nhìn hiện tại; các vùng còn lại giữ thứ tự tương đối và được điều chỉnh để không trùng số.
+5. Gán nhãn **nội dung, tiêu đề, đầu trang, chân trang, bỏ qua**; ngôn ngữ, vai trò **nguyên bản / phiên âm / dịch nghĩa**, hướng chữ và trạng thái duyệt. Khi chọn nhiều vùng, **Giữ nguyên** bảo toàn các thuộc tính khác nhau. Ghi chú và thứ tự riêng sửa khi chọn một vùng.
+6. Annotation tự lưu sau thao tác và trước khi chuyển ảnh; có nút **Lưu**. Tab **Trang & Xuất** cho phép ghi chú trang, đánh dấu đã duyệt và xuất crop kèm manifest.
+
+Model phát hiện chữ và gom vùng theo hình học. **Tiêu đề được gán nhãn thủ công**, chưa chạy model phân loại bố cục. Đầu trang/chân trang/bỏ qua được loại khỏi xuất nội dung; tiêu đề vẫn được giữ.
+
+## Thao tác nhanh
+
+| Thao tác | Chức năng |
+|---|---|
+| `V` / `N` / `B` | Chọn-sửa / Vẽ vùng / Kéo khung đánh số |
+| Click, `Shift+Click`, kéo khung từ chỗ trống | Chọn một hoặc nhiều vùng |
+| Lăn chuột, `+` / `-`, `F` | Zoom tại con trỏ / zoom / vừa khung |
+| Chuột giữa hoặc chế độ Kéo ảnh | Di chuyển vùng nhìn |
+| `[` / `]` | Xoay góc nhìn ±90° |
+| `M`, `Delete` | Gộp vùng chọn, xóa vùng chọn |
+| `Ctrl+Z` / `Ctrl+Y` | Hoàn tác / làm lại chỉnh sửa vùng |
+| `Ctrl+S` | Lưu, kể cả khi đang gõ ghi chú |
+| `PgUp` / `PgDown` | Ảnh trước / tiếp |
+| `?` | Trợ giúp phím tắt |
+
+## Dữ liệu và truy vết
+
+```text
+source/region_tool/
+  __main__.py       # CLI
+  server.py         # API localhost, tác vụ GPU nền
+  detection.py      # PP-OCRv6
+  geometry.py       # Gom cột/dòng, xoay tọa độ, đánh số, chia/gộp
+  persistence.py    # JSON, phiên làm việc, crop và manifest
+  static/           # index.html, style.css, app.js, favicon.svg
+
+outputs/regions/
+  <dataset>/<image_stem>.json
+  session.json
+  crops/<dataset>/<image_stem>/
+  .cache/paddlex/
+```
+
+JSON lưu kích thước ảnh, góc nhìn, mã trang/phần ảnh, PDF nguồn, trạng thái duyệt, ghi chú, `raw_detections` và `regions`. Mỗi vùng có ID ổn định, bbox, nhãn, ngôn ngữ, vai trò, hướng chữ, số thứ tự và trạng thái duyệt.
+
+**Mọi tọa độ đều theo pixel ảnh gốc**, kể cả khi xoay hoặc zoom. `_1`/`_2` là phần ảnh vật lý, không phải Hán/Việt. Chỉ số PDF suy ra từ tên tệp không đồng nhất với số trang in trên sách.
+
+JSON hỏng, sai ảnh hoặc kích thước ảnh đã thay đổi sẽ báo lỗi và không bị ghi đè tự động. Model cục bộ nằm mặc định ở `~/.paddlex/official_models/PP-OCRv6_medium_det`; tùy chọn `--model-dir` cho phép đổi đường dẫn. Cache riêng nằm trong output, hoặc theo `PADDLE_PDX_CACHE_HOME` nếu đã cấu hình. Không tự cài gói, tải model hay chuyển sang CPU khi GPU lỗi.
+
+Môi trường đã kiểm tra: `paddleocr 3.7.0`, `paddlex 3.7.2`, `paddlepaddle-gpu 3.3.1` CUDA 12.6, RTX 4050 Laptop 6 GB. Model v6 là phiên bản mô hình, còn SDK PaddleOCR có số phiên bản 3.7.0. Tham khảo [Text Detection của PaddleOCR](https://www.paddleocr.ai/main/en/version3.x/module_usage/text_detection.html).
+
+## Kiểm tra
 
 ```bash
-/home/nhminh/miniconda3/envs/OCR_Env/bin/python -m unittest tests/test_region_tool.py
+/home/nhminh/miniconda3/envs/OCR_Env/bin/python -m unittest discover -s tests -p test_region_tool.py -v
+node --check source/region_tool/static/app.js
 ```
 
----
-
-## 2. Tính năng chính
-
-- **Duyệt dữ liệu theo thứ tự tự nhiên**: Mặc định quét `data/01_QuocTrieuHuongKhoaLuc` (215 PNG) và `data/02_TuLiemDaiKhoaLuc` (29 PNG), sắp xếp tự nhiên (`page2.png` trước `page10.png`). Ảnh gốc trong `data/` luôn bất biến.
-- **Xoay & Thu phóng mượt**: Pan/Zoom, vừa khung (`F`), xoay góc nhìn `-90°` / `+90°` (`[` / `]`, hữu ích cho các trang xoay như `page110`), nhưng mọi toạ độ `bbox` lưu trong JSON luôn giữ nguyên theo hệ toạ độ pixel ảnh gốc.
-- **Phát hiện vùng cục bộ trên trang hiện tại**:
-  - Model được nạp lười (lazy-load) trong thread nền khi bấm **Nhận diện vùng**; không tự động OCR hàng loạt 244 ảnh.
-  - Ảnh đầu vào được chuyển từ RGB sang **BGR** trước khi đưa vào `TextDetection.predict()` của PaddleX/OpenCV.
-  - Vô hiệu hoá các thao tác xung đột trong lúc suy luận; hiển thị lỗi rõ ràng trên UI mà không làm mất các chỉnh sửa đang có.
-  - Nếu trang đã có vùng gán nhãn, ứng dụng hỏi **Thay thế / Giữ vùng cũ / Hủy**; `raw_detections` luôn được lưu tách biệt để có thể **Gom lại cột/dòng** mà không cần chạy lại model.
-- **Gom nhóm cột / dòng theo góc nhìn hiện tại**:
-  - **Cột dọc (Chữ Hán - mặc định)**: Gom theo trục dọc trên góc nhìn đã xoay (nếu có) rồi quy đổi `bbox` về tọa độ ảnh gốc; giới hạn bề rộng cột hợp nhất để tránh gộp nhầm cột kề nhau hoặc bị các box tiêu đề/đầu trang rộng bắc cầu nối hai cột nội dung.
-  - **Dòng ngang (Quốc ngữ)**: Giới hạn khoảng trống theo trục X tương đối với chiều cao chữ cục bộ để không gộp nhầm chữ cùng hàng Y qua khe giữa 2 trang sách đôi hoặc 2 cột tách biệt.
-  - Lưu ý: Công cụ không chạy layout model nhận diện tiêu đề tự động; nhãn `title`, `header`, `footer`, `ignore` được chỉnh sửa thủ công.
-- **Chỉnh sửa vùng & Undo/Redo**:
-  - Vẽ box mới, chọn đơn / `Shift+Click` / kéo khung chọn nhiều vùng (marquee), di chuyển, kéo 8 nút góc/cạnh để đổi kích thước, gộp (`M`), chia ngang/dọc (tại trung điểm hoặc tại điểm click), xoá (`Delete`), Hoàn tác (`Ctrl+Z`) / Làm lại (`Ctrl+Y`).
-  - Thuộc tính áp dụng cho vùng đang chọn: Nhãn (`body`/`title`/`header`/`footer`/`ignore`), Ngôn ngữ (`han`/`viet`/`unknown`), Vai trò (`original`/`phonetic`/`translation`/`other`), Hướng chữ (`vertical`/`horizontal`), Thứ tự đọc, Trạng thái duyệt vùng (`pending`/`reviewed`/`needs_review`).
-  - Khi chọn nhiều vùng có thuộc tính khác nhau, giá trị `— Giữ nguyên —` bảo toàn thuộc tính từng vùng. Thứ tự và ghi chú riêng chỉ sửa trong bảng thuộc tính khi chọn một vùng.
-  - Bảng bên phải có thanh cuộn để dùng được trên màn hình nhỏ; khi zoom chỉ render phần ảnh đang nhìn thấy để hạn chế RAM.
-- **Đánh số thứ tự đọc hàng loạt (Bulk Numbering)**:
-  - Kéo khung chọn nhiều box (chế độ **Đánh số marquee** hoặc chọn rồi bấm **Đánh số vùng đang chọn**), chọn số bắt đầu và chiều đọc (`Cột phải → trái`, `Cột trái → phải`, `Dòng trên → dưới`) tính theo góc nhìn hiện tại.
-  - Chỉ đánh số lại các vùng được chọn một cách tất định, giữ nguyên thứ tự tương đối của các vùng còn lại và đảm bảo mọi `reading_order` đều là số nguyên dương duy nhất toàn cục.
-- **An toàn dữ liệu & Xuất ảnh crop**:
-  - Nếu file JSON hiện có bị hỏng, ứng dụng báo lỗi rõ ràng và **không** tự động ghi đè bằng trạng thái rỗng.
-  - Nếu kích thước ảnh thay đổi so với annotation đã lưu, cần kiểm tra lại tọa độ; ứng dụng báo lỗi thay vì âm thầm dùng bbox cũ.
-  - Xuất các vùng đã chọn hoặc toàn bộ vùng nội dung (giữ `title`, loại trừ `ignore`/`header`/`footer`) ở độ phân giải gốc kèm `manifest.json`.
-
----
-
-## 3. Điều khiển & Phím tắt
-
-| Phím tắt / Thao tác | Chức năng |
-|---|---|
-| `PgUp` / `PgDown` | Chuyển trang trước / trang tiếp (tự động lưu nếu có thay đổi) |
-| `Ctrl+S` | Lưu annotation JSON của trang hiện tại |
-| `Ctrl+E` | Xuất ảnh crop & `manifest.json` |
-| `Ctrl+Z` / `Ctrl+Y` | Hoàn tác / Làm lại thao tác chỉnh sửa vùng |
-| `V` / `N` / `B` | Chế độ Chọn-Sửa / Vẽ vùng mới / Đánh số marquee |
-| `F` | Vừa khung (Fit view) |
-| `[` / `]` | Xoay góc nhìn `-90°` / `+90°` |
-| `M` | Gộp các vùng đang chọn thành 1 khung bao |
-| `Delete` | Xoá các vùng đang chọn |
-| Lăn chuột / `+` `-` | Phóng to / Thu nhỏ |
-| Giữ chuột giữa (hoặc chế độ Pan) | Kéo di chuyển vùng nhìn ảnh |
-
----
-
-## 4. Định dạng JSON & Thông tin Nguồn gốc (Provenance)
-
-Mỗi ảnh được lưu tại `outputs/regions/<dataset>/<image_stem>.json`, cùng tệp phiên làm việc `outputs/regions/session.json` để mở lại đúng ảnh gần nhất.
-
-- `image_width`, `image_height`: Kích thước ảnh gốc (pixel).
-- `orientation`: Góc xoay hiển thị (`0`, `90`, `180`, `270`).
-- `source.page_index`, `source.image_part`: Tách từ tên tệp (`page12_1.png` → `page_index: 12`, `image_part: 1`). **Lưu ý**: `_1` / `_2` là phần cắt vật lý của ảnh, **không phải** nhãn ngôn ngữ Hán/Việt.
-- `source.pdf_basename`, `source.pdf_page_range`, `source.pdf_page_index`: Ánh xạ theo chỉ số trang trong tệp PDF (`_trang_0331-0440`, `_trang_0090-0118`), **không** đồng nhất với số trang in trên sách cổ.
-- `raw_detections`: Danh sách polygon, `bbox` và `score` gốc từ `PP-OCRv6_medium_det` (tách biệt hoàn toàn với `regions`).
-- `regions`: Danh sách vùng đã hiệu chỉnh gồm `id` ổn định, `bbox` theo toạ độ ảnh gốc, nhãn, ngôn ngữ, vai trò, hướng chữ, `reading_order`, `review_state`, `notes`.
-
----
-
-## 5. Cấu hình Model Cục bộ
-
-- Mặc định sử dụng backend Paddle GPU trong `OCR_Env` (`paddlepaddle-gpu 3.3.1`, `paddleocr 3.7.0`, `paddlex 3.7.2`), **không** tự động fallback về CPU hay thay thế bằng model OCR khác:
-  ```python
-  from paddleocr import TextDetection
-  model = TextDetection(
-      model_name="PP-OCRv6_medium_det",
-      model_dir="/home/nhminh/.paddlex/official_models/PP-OCRv6_medium_det",
-      device="gpu:0",
-  )
-  ```
-- Dùng model cục bộ, tắt bước kiểm tra nguồn tải model qua mạng. Cache riêng của PaddleX đặt trong `outputs/regions/.cache/paddlex` (hoặc theo `PADDLE_PDX_CACHE_HOME` nếu đã cấu hình).
-
----
-
-## 6. Phạm vi Giới hạn của Module
-
-Module này chỉ thực hiện **phát hiện vùng chữ hình học (text region detection)**, gom nhóm cột/dòng và gán nhãn cấu trúc/thứ tự đọc.
-
-- **Không** thực hiện nhận dạng chữ (transcription/OCR text), dịch nghĩa, hay xuất bảng đối chiếu TSV trong module này.
-- Việc **đối chiếu ngữ nghĩa / căn hàng (semantic alignment)** giữa các đoạn văn bản Hán – Việt (vốn chưa có ánh xạ 1-1 sẵn) sẽ được thực hiện ở các bước xử lý sau trên nền JSON và ảnh crop đã xuất từ công cụ này.
+Module chuẩn bị vùng ảnh cho bước nhận dạng ký tự, hiệu đính và dóng hàng về sau; chưa nhận dạng nội dung chữ, tạo bản dịch hoặc xuất TSV/XLSX song song.

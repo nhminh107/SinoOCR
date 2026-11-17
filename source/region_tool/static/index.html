@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sino Studio — Gán nhãn vùng OCR</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Header ~60px -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button id="btn-toggle-sidebar" class="btn btn-icon mobile-only" type="button" title="Ẩn/hiện danh sách tài liệu" aria-label="Ẩn/hiện danh sách tài liệu">☰</button>
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">文</span><span class="brand-name">Sino Studio</span>
+          <span class="brand-sub">Gán nhãn vùng</span>
+        </div>
+        <div class="divider-v" aria-hidden="true"></div>
+        <nav class="breadcrumb" aria-label="Vị trí tài liệu">
+          <span id="crumb-dataset" class="crumb-muted">—</span>
+          <span class="crumb-sep">/</span>
+          <span id="crumb-filename" class="crumb-strong">Đang tải...</span>
+          <span id="crumb-meta" class="crumb-chip" hidden></span>
+        </nav>
+      </div>
+
+      <div class="topbar-right">
+        <span id="save-status" class="status-pill" data-state="saved" title="Trạng thái lưu">Đã lưu</span>
+        <span id="gpu-chip" class="chip-device" title="Cấu hình suy luận cục bộ">GPU · PP-OCRv6</span>
+        <button id="btn-save" class="btn btn-secondary" type="button" title="Lưu ngay (Ctrl+S)">Lưu</button>
+        <button id="btn-detect" class="btn btn-primary" type="button" title="Chạy PP-OCRv6 trên trang hiện tại">Nhận diện vùng</button>
+        <button id="btn-help" class="btn btn-icon" type="button" title="Phím tắt (?)" aria-label="Phím tắt">?</button>
+        <button id="btn-toggle-inspector" class="btn btn-icon mobile-only" type="button" title="Ẩn/hiện bảng thuộc tính" aria-label="Ẩn/hiện bảng thuộc tính">⚙</button>
+      </div>
+    </header>
+
+    <!-- Main 3-column workspace -->
+    <div class="workspace">
+      <!-- Left Document Explorer (~240px) -->
+      <aside id="sidebar" class="sidebar" aria-label="Danh sách tài liệu">
+        <div class="panel-head">
+          <h2 class="panel-title">Tài liệu</h2>
+          <span id="doc-total-badge" class="count-badge tabular">0</span>
+        </div>
+        <div class="search-box">
+          <input id="doc-search" type="search" placeholder="Tìm tên file hoặc số trang..." aria-label="Tìm kiếm ảnh">
+        </div>
+        <div id="doc-tree" class="doc-tree" role="tree"></div>
+      </aside>
+
+      <!-- Center Canvas Viewer -->
+      <main class="viewer-col">
+        <div class="canvas-toolbar" role="toolbar" aria-label="Công cụ chỉnh sửa vùng">
+          <div class="tool-group" role="group" aria-label="Chế độ chuột">
+            <button class="btn-tool active" data-mode="select" type="button" title="Chọn / Di chuyển / Chỉnh cỡ / Marquee (V)">Chọn</button>
+            <button class="btn-tool" data-mode="draw" type="button" title="Vẽ vùng chữ nhật mới (N)">Vẽ</button>
+            <button class="btn-tool" data-mode="bulk_number" type="button" title="Kéo khung đánh số hàng loạt (B)">Đánh số</button>
+            <button class="btn-tool" data-mode="split_h" type="button" title="Click vào vùng để chia ngang">Chia ngang</button>
+            <button class="btn-tool" data-mode="split_v" type="button" title="Click vào vùng để chia dọc">Chia dọc</button>
+            <button class="btn-tool" data-mode="pan" type="button" title="Kéo di chuyển ảnh (hoặc giữ chuột giữa)">Kéo ảnh</button>
+          </div>
+
+          <div class="divider-v" aria-hidden="true"></div>
+
+          <div class="tool-group">
+            <button id="btn-undo" class="btn btn-sm" type="button" title="Hoàn tác (Ctrl+Z)">Hoàn tác</button>
+            <button id="btn-redo" class="btn btn-sm" type="button" title="Làm lại (Ctrl+Y)">Làm lại</button>
+            <button id="btn-merge" class="btn btn-sm" type="button" title="Gộp các vùng đang chọn (M)">Gộp</button>
+            <button id="btn-split-h-mid" class="btn btn-sm" type="button" title="Chia ngang tại trung điểm vùng chọn">Cắt ngang</button>
+            <button id="btn-split-v-mid" class="btn btn-sm" type="button" title="Chia dọc tại trung điểm vùng chọn">Cắt dọc</button>
+            <button id="btn-delete" class="btn btn-sm btn-danger-subtle" type="button" title="Xóa vùng đang chọn (Delete)">Xóa</button>
+          </div>
+
+          <div class="divider-v" aria-hidden="true"></div>
+
+          <div class="tool-group">
+            <button id="btn-rot-l" class="btn btn-sm" type="button" title="Xoay góc nhìn -90° ([)">↺ 90°</button>
+            <button id="btn-rot-r" class="btn btn-sm" type="button" title="Xoay góc nhìn +90° (])">↻ 90°</button>
+            <button id="btn-zoom-out" class="btn btn-sm" type="button" title="Thu nhỏ (-)">−</button>
+            <span id="zoom-readout" class="zoom-readout tabular">100%</span>
+            <button id="btn-zoom-in" class="btn btn-sm" type="button" title="Phóng to (+)">+</button>
+            <button id="btn-fit" class="btn btn-sm" type="button" title="Vừa khung ảnh (F)">Vừa</button>
+            <label class="toggle-inline" title="Hiện/ẩn đa giác thô từ PP-OCRv6">
+              <input id="chk-show-raw" type="checkbox">
+              <span>Raw OCR</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Inline Error / Loading Banner -->
+        <div id="viewer-banner" class="banner" role="alert" hidden>
+          <span id="viewer-banner-text"></span>
+          <button id="viewer-banner-close" class="btn-icon-sm" type="button" aria-label="Đóng thông báo">✕</button>
+        </div>
+
+        <div id="canvas-stage" class="canvas-stage">
+          <canvas id="region-canvas" tabindex="0" aria-label="Khung hiển thị và gán nhãn trang sách"></canvas>
+          <div id="canvas-empty" class="canvas-empty" hidden>Chưa có dữ liệu ảnh.</div>
+          <div id="canvas-loading" class="canvas-loading" hidden>
+            <span class="spinner" aria-hidden="true"></span>
+            <span id="canvas-loading-text">Đang tải...</span>
+          </div>
+        </div>
+
+        <!-- Bottom Navigation & Status -->
+        <footer class="bottom-bar">
+          <div class="nav-controls">
+            <button id="btn-prev" class="btn btn-sm" type="button" title="Ảnh trước (PgUp)">← Trước</button>
+            <span id="page-counter" class="tabular page-counter">0 / 0</span>
+            <button id="btn-next" class="btn btn-sm" type="button" title="Ảnh tiếp (PgDown)">Tiếp →</button>
+          </div>
+          <div id="bottom-info" class="bottom-info tabular">Sẵn sàng</div>
+        </footer>
+      </main>
+
+      <!-- Right Scrollable Inspector (~300px) -->
+      <aside id="inspector" class="inspector" aria-label="Bảng thuộc tính và điều khiển">
+        <div class="tabs" role="tablist">
+          <button class="tab-btn active" data-tab="props" role="tab" aria-selected="true" type="button">Thuộc tính</button>
+          <button class="tab-btn" data-tab="group" role="tab" aria-selected="false" type="button">Đánh số & Gom</button>
+          <button class="tab-btn" data-tab="page" role="tab" aria-selected="false" type="button">Trang & Xuất</button>
+        </div>
+
+        <!-- Tab 1: Region Properties & List -->
+        <section class="tab-pane active" data-pane="props">
+          <div class="section-block">
+            <div class="section-head">
+              <h3 class="section-title">Vùng đang chọn</h3>
+              <span id="sel-count-badge" class="count-badge tabular">0</span>
+            </div>
+
+            <div id="prop-form" class="form-grid">
+              <label class="field">
+                <span id="label-prop-label">Nhãn vùng</span>
+                <select id="prop-label" aria-labelledby="label-prop-label">
+                  <option value="">— Giữ nguyên —</option>
+                  <option value="body">Nội dung (body)</option>
+                  <option value="title">Tiêu đề (title)</option>
+                  <option value="header">Đầu trang (header)</option>
+                  <option value="footer">Chân trang (footer)</option>
+                  <option value="ignore">Bỏ qua (ignore)</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span id="label-prop-language">Ngôn ngữ</span>
+                <select id="prop-language" aria-labelledby="label-prop-language">
+                  <option value="">— Giữ nguyên —</option>
+                  <option value="han">Chữ Hán (han)</option>
+                  <option value="viet">Tiếng Việt (viet)</option>
+                  <option value="unknown">Chưa rõ (unknown)</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span id="label-prop-role">Vai trò nội dung</span>
+                <select id="prop-role" aria-labelledby="label-prop-role">
+                  <option value="">— Giữ nguyên —</option>
+                  <option value="original">Nguyên bản</option>
+                  <option value="phonetic">Phiên âm</option>
+                  <option value="translation">Dịch nghĩa</option>
+                  <option value="other">Khác</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span id="label-prop-direction">Hướng chữ</span>
+                <select id="prop-direction" aria-labelledby="label-prop-direction">
+                  <option value="">— Giữ nguyên —</option>
+                  <option value="vertical">Dọc (vertical)</option>
+                  <option value="horizontal">Ngang (horizontal)</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span id="label-prop-review">Trạng thái duyệt</span>
+                <select id="prop-review" aria-labelledby="label-prop-review">
+                  <option value="">— Giữ nguyên —</option>
+                  <option value="pending">Chờ duyệt</option>
+                  <option value="reviewed">Đã duyệt</option>
+                  <option value="needs_review">Cần xem lại</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span id="label-prop-order">Thứ tự đọc</span>
+                <input id="prop-order" aria-labelledby="label-prop-order" type="number" min="1" step="1" class="tabular" placeholder="Chỉ sửa khi chọn 1 vùng">
+              </label>
+
+              <label class="field">
+                <span id="label-prop-notes">Ghi chú vùng</span>
+                <textarea id="prop-notes" aria-labelledby="label-prop-notes" rows="2" placeholder="Chỉ sửa khi chọn 1 vùng"></textarea>
+              </label>
+
+              <button id="btn-apply-props" class="btn btn-primary btn-full" type="button">Áp dụng cho vùng chọn</button>
+            </div>
+          </div>
+
+          <div class="section-block region-list-block">
+            <div class="section-head">
+              <h3 class="section-title">Danh sách vùng</h3>
+              <span id="region-total-badge" class="count-badge tabular">0</span>
+            </div>
+            <div id="region-list" class="region-list" role="listbox" aria-label="Danh sách vùng theo thứ tự đọc"></div>
+          </div>
+        </section>
+
+        <!-- Tab 2: Numbering, Grouping & Model Settings -->
+        <section class="tab-pane" data-pane="group" hidden>
+          <div class="section-block">
+            <h3 class="section-title">Đánh số thứ tự đọc</h3>
+            <div class="form-grid">
+              <label class="field">
+                <span id="label-num-start">Số bắt đầu</span>
+                <input id="num-start" aria-labelledby="label-num-start" type="number" min="1" value="1" class="tabular">
+              </label>
+              <label class="field">
+                <span id="label-num-order-mode">Chiều đọc</span>
+                <select id="num-order-mode" aria-labelledby="label-num-order-mode">
+                  <option value="rtl_ttb">Cột phải → trái, trên → dưới</option>
+                  <option value="ltr_ttb">Cột trái → phải, trên → dưới</option>
+                  <option value="ttb_ltr">Dòng trên → dưới, trái → phải</option>
+                </select>
+              </label>
+              <label class="toggle-row">
+                <input id="num-exclude-non-content" type="checkbox" checked>
+                <span>Loại trừ ignore / header / footer</span>
+              </label>
+              <div class="btn-row">
+                <button id="btn-number-selected" class="btn btn-secondary" type="button">Đánh số vùng chọn</button>
+                <button id="btn-number-all" class="btn btn-secondary" type="button">Đánh số nội dung</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-block">
+            <h3 class="section-title">Gom nhóm từ Raw OCR</h3>
+            <div class="form-grid">
+              <label class="field">
+                <span id="label-grp-mode">Kiểu gom</span>
+                <select id="grp-mode" aria-labelledby="label-grp-mode">
+                  <option value="vertical_columns">Cột dọc (Chữ Hán)</option>
+                  <option value="horizontal_lines">Dòng ngang (Tiếng Việt)</option>
+                </select>
+              </label>
+              <label class="field">
+                <span id="label-grp-min-score">Ngưỡng điểm raw</span>
+                <input id="grp-min-score" aria-labelledby="label-grp-min-score" type="number" min="0" max="1" step="0.05" value="0.25" class="tabular">
+              </label>
+              <label class="field">
+                <span id="label-grp-overlap">Ngưỡng chồng lấn</span>
+                <input id="grp-overlap" aria-labelledby="label-grp-overlap" type="number" min="0.05" max="0.95" step="0.05" value="0.35" class="tabular">
+              </label>
+              <button id="btn-regroup" class="btn btn-secondary btn-full" type="button">Gom lại từ raw hiện có</button>
+            </div>
+          </div>
+
+          <div class="section-block">
+            <h3 class="section-title">Cấu hình PP-OCRv6 cục bộ</h3>
+            <div class="form-grid">
+              <label class="field">
+                <span id="label-cfg-device">Device</span>
+                <input id="cfg-device" aria-labelledby="label-cfg-device" type="text" value="gpu:0">
+              </label>
+              <label class="field">
+                <span id="label-cfg-model-dir">Thư mục model</span>
+                <input id="cfg-model-dir" aria-labelledby="label-cfg-model-dir" type="text" value="">
+              </label>
+              <p class="hint-text">Chạy trên GPU cục bộ; không tự động fallback CPU hay tải model từ mạng.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 3: Page Provenance, Review & Export -->
+        <section class="tab-pane" data-pane="page" hidden>
+          <div class="section-block">
+            <h3 class="section-title">Nguồn gốc tài liệu</h3>
+            <dl class="meta-dl">
+              <dt>Bộ dữ liệu</dt><dd id="meta-dataset">—</dd>
+              <dt>Tên tệp</dt><dd id="meta-filename">—</dd>
+              <dt>Kích thước gốc</dt><dd id="meta-dims" class="tabular">—</dd>
+              <dt>Góc nhìn</dt><dd id="meta-orientation" class="tabular">0°</dd>
+              <dt>Trang / Mảnh ảnh</dt><dd id="meta-part">—</dd>
+              <dt>Tệp PDF nguồn</dt><dd id="meta-pdf">—</dd>
+              <dt>Chỉ số trang PDF</dt><dd id="meta-pdf-page" class="tabular">—</dd>
+            </dl>
+            <p class="hint-text">Mảnh <code>_1</code> / <code>_2</code> là phần cắt vật lý; chỉ số PDF không đồng nhất với số trang in trong sách.</p>
+          </div>
+
+          <div class="section-block">
+            <h3 class="section-title">Duyệt trang</h3>
+            <div class="form-grid">
+              <label class="field">
+                <span id="label-page-review-state">Trạng thái trang</span>
+                <select id="page-review-state" aria-labelledby="label-page-review-state">
+                  <option value="pending">Chờ duyệt</option>
+                  <option value="reviewed">Đã duyệt</option>
+                  <option value="needs_review">Cần xem lại</option>
+                </select>
+              </label>
+              <label class="field">
+                <span id="label-page-notes">Ghi chú trang</span>
+                <textarea id="page-notes" aria-labelledby="label-page-notes" rows="3" placeholder="Ghi chú về trang này..."></textarea>
+              </label>
+            </div>
+          </div>
+
+          <div class="section-block">
+            <h3 class="section-title">Xuất ảnh crop</h3>
+            <div class="form-grid">
+              <div class="btn-row">
+                <button id="btn-export-selected" class="btn btn-secondary" type="button">Xuất vùng chọn</button>
+                <button id="btn-export-content" class="btn btn-primary" type="button">Xuất toàn bộ nội dung</button>
+              </div>
+              <p class="hint-text">Giữ <code>title</code> là nội dung; tự động loại trừ <code>ignore</code>, <code>header</code>, <code>footer</code>.</p>
+              <div id="export-result" class="export-result" hidden></div>
+            </div>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Toast Stack -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <!-- Custom Modal: Detect Replace Confirmation -->
+  <div id="detect-modal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="detect-modal-title">
+    <div class="modal-card">
+      <h3 id="detect-modal-title" class="modal-title">Trang đã có vùng gán nhãn</h3>
+      <p id="detect-modal-desc" class="modal-desc"></p>
+      <div class="modal-actions">
+        <button id="modal-btn-cancel" class="btn btn-secondary" type="button">Hủy</button>
+        <button id="modal-btn-keep" class="btn btn-secondary" type="button">Giữ vùng đã sửa (chỉ lưu raw)</button>
+        <button id="modal-btn-replace" class="btn btn-primary" type="button">Thay thế bằng nhóm mới</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom Modal: Keyboard Shortcuts -->
+  <div id="help-modal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="help-modal-title">
+    <div class="modal-card modal-card-wide">
+      <div class="modal-head">
+        <h3 id="help-modal-title" class="modal-title">Phím tắt & Thao tác nhanh</h3>
+        <button id="help-modal-close" class="btn-icon-sm" type="button" aria-label="Đóng">✕</button>
+      </div>
+      <div class="shortcut-grid">
+        <div><kbd>Ctrl+S</kbd> Lưu annotation</div>
+        <div><kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd> Hoàn tác / Làm lại</div>
+        <div><kbd>PgUp</kbd> / <kbd>PgDown</kbd> Ảnh trước / Ảnh tiếp</div>
+        <div><kbd>V</kbd> / <kbd>N</kbd> / <kbd>B</kbd> Chọn / Vẽ / Đánh số</div>
+        <div><kbd>M</kbd> Gộp các vùng đang chọn</div>
+        <div><kbd>Delete</kbd> Xóa vùng đang chọn</div>
+        <div><kbd>F</kbd> Vừa khung ảnh</div>
+        <div><kbd>[</kbd> / <kbd>]</kbd> Xoay góc nhìn ±90°</div>
+        <div><kbd>+</kbd> / <kbd>-</kbd> Phóng to / Thu nhỏ</div>
+        <div><kbd>Shift+Click</kbd> Chọn nhiều vùng</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
