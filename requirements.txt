@@ -1,0 +1,4 @@
+surya-ocr==0.17.1
+# Surya 0.17.x decoder is incompatible with Transformers 5: upstream issue #484.
+transformers==4.57.3
+matplotlib

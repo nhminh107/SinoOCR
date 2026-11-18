@@ -69,13 +69,13 @@ class TestRegionTool(unittest.TestCase):
         if not all(folder.is_dir() for folder in DEFAULT_FOLDERS):
             self.skipTest("Thư mục data/ mặc định không có sẵn.")
         entries = collect_images(DEFAULT_FOLDERS)
-        self.assertEqual(len(entries), 244)
+        self.assertEqual(len(entries), 273)
         first_ds = [e for e in entries if e.dataset == "01_QuocTrieuHuongKhoaLuc"]
         second_ds = [e for e in entries if e.dataset == "02_TuLiemDaiKhoaLuc"]
         self.assertEqual(len(first_ds), 215)
-        self.assertEqual(len(second_ds), 29)
+        self.assertEqual(len(second_ds), 58)
         self.assertEqual(first_ds[0].filename, "page1_1.png")
-        self.assertEqual(second_ds[0].filename, "page1.png")
+        self.assertEqual(second_ds[0].filename, "page1_1.png")
 
     def test_vertical_column_grouping_avoids_adjacent_merge_and_wide_title_bridge(self) -> None:
         # Hai cột cạnh nhau (cách 4px) + 1 box tiêu đề rộng nằm phía trên cả 2 cột
@@ -328,6 +328,52 @@ class TestRegionTool(unittest.TestCase):
             with self.assertRaises(json.JSONDecodeError):
                 workspace.save(0, valid)
             self.assertEqual(path.read_text(), "{broken")
+
+    def test_hisdoc1b_layout_analysis_titles_and_rtl_columns(self) -> None:
+        from source.LayoutAnalysis import SinoLayoutDetector, render_layout_image
+        # Mô phỏng trang mộc bản 2676x4322 có Thượng lan, cột Đài đầu nhô cao, cột cử nhân + tiểu chú 2 dòng và mảnh cắt rìa
+        orig_w, orig_h = 2676, 4322
+        dets = [
+            # Mảnh chữ cắt lẻ sát rìa phải (cần bị lọc bỏ)
+            RawDetection("edge_noise", [], [2590, 100, 2670, 440], 0.65),
+            # 2 dòng con ở Thượng lan (y < 520) -> phải gộp thành #1 title
+            RawDetection("up1", [], [2076, 57, 2264, 411], 0.88),
+            RawDetection("up2", [], [1913, 48, 2114, 416], 0.86),
+            # Cột 1 (phải nhất): cử nhân + tiểu chú
+            RawDetection("c1_name", [], [2250, 920, 2575, 1730], 0.90),
+            RawDetection("c1_bio", [], [2350, 2000, 2580, 2900], 0.87),
+            # Cột 2: cử nhân + tiểu chú 2 dòng song hành (夹注)
+            RawDetection("c2_name", [], [1895, 930, 2200, 1720], 0.90),
+            RawDetection("c2_bio_r", [], [2030, 2020, 2195, 2890], 0.88),
+            RawDetection("c2_bio_l", [], [1865, 2025, 2045, 2710], 0.86),
+            # Cột 3: Cột Tiêu đề trường thi nhô cao (Đài đầu: y1=575 vs median ~925)
+            RawDetection("c3_title", [], [1480, 575, 1800, 2150], 0.91),
+            # Cột 4 (trái nhất): cử nhân
+            RawDetection("c4_name", [], [1120, 935, 1430, 1750], 0.89),
+            RawDetection("c4_bio", [], [1200, 2010, 1425, 2880], 0.87),
+        ]
+        regions = group_detections(
+            dets,
+            mode="vertical_columns",
+            reading_order="rtl_ttb",
+            orig_w=orig_w,
+            orig_h=orig_h,
+        )
+        # Gồm 1 vùng title Thượng lan + 4 cột chính văn (trong đó cột 3 là title Đài đầu)
+        self.assertEqual(len(regions), 5)
+        self.assertEqual([r.reading_order for r in regions], [1, 2, 3, 4, 5])
+        self.assertEqual([r.label for r in regions], ["title", "body", "body", "title", "body"])
+        # Kiểm tra tiểu chú 2 dòng của Cột 2 đã được gộp trọn vào #3
+        self.assertEqual(regions[2].bbox, [1865.0, 930.0, 2200.0, 2890.0])
+
+        # Kiểm tra SinoLayoutDetector + render_layout_image trên ảnh thực nếu có
+        sample_img = Path("data/01_QuocTrieuHuongKhoaLuc/page2_1.png")
+        if sample_img.is_file():
+            detector = SinoLayoutDetector(engine="auto")
+            res = detector(sample_img)
+            self.assertGreaterEqual(len(res.bboxes), 7)
+            vis = render_layout_image(sample_img, res)
+            self.assertEqual(vis.size, (orig_w, orig_h))
 
 
 if __name__ == "__main__":
