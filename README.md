@@ -84,3 +84,12 @@ node --check source/region_tool/static/app.js
 ```
 
 Module chuẩn bị vùng ảnh cho bước nhận dạng ký tự, hiệu đính và dóng hàng về sau; chưa nhận dạng nội dung chữ, tạo bản dịch hoặc xuất TSV/XLSX song song.
+
+## Xem ảnh và kết quả OCR cục bộ
+
+```bash
+/home/nhminh/miniconda3/envs/OCR_Env/bin/python -m source.ocr_viewer --no-browser
+```
+
+Mặc định mở tại `http://127.0.0.1:8767` (chỉ đọc ảnh trong `data/`, xem và sửa trực tiếp text trong `submission/<tác phẩm>/02_ocr_tho/{han,viet}/`). Khi mở ảnh chưa duyệt sẽ tự đánh dấu `Đã duyệt` vào `outputs/ocr_review.json` (giữ nguyên ghi chú và cờ `Cần xem lại` nếu có); bấm **Lưu** (`Ctrl+S`) để ghi sửa đổi TXT cùng trạng thái và ghi chú. Có thể đổi cổng bằng `--port`, hoặc chỉ định `--data-dir`, `--submission-dir`, `--review-file`.
+

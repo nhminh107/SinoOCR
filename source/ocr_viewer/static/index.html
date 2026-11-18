@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Xem &amp; sửa OCR Hán–Nôm / Việt</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-group">
+      <h1 class="app-title">OCR Hán–Nôm</h1>
+      <label class="control-label">
+        <span>Tác phẩm</span>
+        <select id="dataset-select" aria-label="Chọn tác phẩm"></select>
+      </label>
+      <label class="control-label">
+        <span>Trang</span>
+        <select id="image-select" aria-label="Chọn ảnh"></select>
+      </label>
+      <span id="page-counter" class="counter">0 / 0</span>
+    </div>
+
+    <div class="topbar-group">
+      <button id="prev-btn" type="button" class="btn" title="Ảnh trước (PgUp)">← Ảnh trước</button>
+      <button id="next-btn" type="button" class="btn" title="Ảnh sau (PgDown)">Ảnh sau →</button>
+    </div>
+
+    <div class="topbar-group">
+      <button id="zoom-out-btn" type="button" class="btn" title="Thu nhỏ">-</button>
+      <button id="zoom-fit-btn" type="button" class="btn" title="Vừa khung">Vừa khung</button>
+      <button id="zoom-in-btn" type="button" class="btn" title="Phóng to">+</button>
+      <span id="zoom-label" class="counter">Vừa khung</span>
+    </div>
+  </header>
+
+  <section class="review-bar" aria-label="Đánh dấu và ghi chú">
+    <label class="control-label">
+      <span>Trạng thái</span>
+      <select id="review-status" aria-label="Trạng thái duyệt">
+        <option value="unreviewed">Chưa duyệt</option>
+        <option value="needs_review">Cần xem lại</option>
+        <option value="approved">Đã duyệt</option>
+      </select>
+    </label>
+
+    <label class="review-note-wrap">
+      <span>Ghi chú</span>
+      <textarea id="review-note" rows="1" placeholder="Nhập ghi chú cho ảnh hiện tại..."></textarea>
+    </label>
+
+    <div class="review-actions">
+      <button id="save-review-btn" type="button" class="btn btn-primary" title="Lưu text và ghi chú (Ctrl+S)">Lưu</button>
+      <span id="review-feedback" class="review-feedback" aria-live="polite"></span>
+    </div>
+  </section>
+
+  <main class="workspace">
+    <section class="pane pane-image" aria-label="Ảnh gốc">
+      <div class="pane-header">
+        <h2>Ảnh gốc</h2>
+        <span id="image-filename" class="pane-meta">—</span>
+      </div>
+      <div id="image-viewport" class="image-viewport">
+        <div id="image-status" class="status-banner" hidden>Đang tải ảnh...</div>
+        <img id="page-image" alt="Ảnh trang tài liệu" hidden>
+      </div>
+    </section>
+
+    <section class="pane pane-text" aria-label="OCR Hán–Nôm">
+      <div class="pane-header">
+        <h2>OCR Hán–Nôm</h2>
+        <span id="han-meta" class="pane-meta">—</span>
+      </div>
+      <div class="text-body">
+        <div id="han-status" class="status-banner" hidden></div>
+        <textarea id="han-text" class="ocr-editor ocr-han" dir="ltr" spellcheck="false" aria-label="Nội dung OCR Hán–Nôm" placeholder="Nhập hoặc sửa nội dung Hán–Nôm..."></textarea>
+      </div>
+    </section>
+
+    <section class="pane pane-text" aria-label="OCR Việt">
+      <div class="pane-header">
+        <h2>OCR Việt</h2>
+        <span id="viet-meta" class="pane-meta">—</span>
+      </div>
+      <div class="text-body">
+        <div id="viet-status" class="status-banner" hidden></div>
+        <textarea id="viet-text" class="ocr-editor ocr-viet" dir="ltr" spellcheck="false" aria-label="Nội dung OCR Việt" placeholder="Nhập hoặc sửa nội dung tiếng Việt..."></textarea>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -8,7 +8,7 @@ import cv2
 ORIGINAL_PATTERN = re.compile(r"^page\d+\.png$", re.IGNORECASE)
 
 
-def split_image(image, overlap_ratio=0.04):
+def split_image(image, overlap_ratio=0.01):
     """Chia đôi ảnh theo chiều ngang, hai nửa chồng lên nhau một dải nhỏ ở giữa.
 
     Trả về (left, right). Dải overlap rộng overlap_ratio * width, chia đều cho hai bên.
@@ -24,7 +24,7 @@ def split_image(image, overlap_ratio=0.04):
 
 
 def split_wide_images(
-    input_dir, max_width=4000, overlap_ratio=0.04, delete_original=False
+    input_dir, max_width=4000, overlap_ratio=0.01, delete_original=False
 ):
     """Duyệt thư mục, ảnh có width > max_width thì chia đôi thành _1 (trái) và _2 (phải).
 
@@ -67,8 +67,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--max-width", type=int, default=4000)
     parser.add_argument(
-        "--overlap-ratio", type=float, default=0.04,
-        help="Tỉ lệ vùng chồng lên nhau so với width gốc (mặc định 0.04).",
+        "--overlap-ratio", type=float, default=0.01,
+        help="Tỉ lệ vùng chồng lên nhau so với width gốc (mặc định 0.01).",
     )
     parser.add_argument(
         "--delete-original", action="store_true",
