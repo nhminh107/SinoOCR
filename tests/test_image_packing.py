@@ -195,6 +195,10 @@ class TestImagePacking(unittest.TestCase):
         self.assertIsNotNone(mr_img)
         self.assertEqual([p["index"] for p in placements], [1, 2, 3, 4, 5, 6])
         self.assertLess(mr_img.width * mr_img.height, row_img.width * row_img.height)
+        # Box #1 phải nằm ở góc trên-phải (giữ thứ tự đọc từ phải qua trái)
+        b1 = placements[0]["packed_bbox"]
+        self.assertEqual(b1[1], min(p["packed_bbox"][1] for p in placements))
+        self.assertEqual(b1[2], max(p["packed_bbox"][2] for p in placements))
         self._assert_no_overlap(placements)
 
     def _assert_no_overlap(self, placements: list[dict]) -> None:

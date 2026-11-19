@@ -1,6 +1,9 @@
 """File I/O tools for OCR agents outputting Han-Nom and Vietnamese text files."""
 
+import argparse
+import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
@@ -375,3 +378,71 @@ def build_ocr_tools(
         read_ocr_file,
         list_ocr_files,
     ]
+
+
+def _cli_main(argv: Optional[List[str]] = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="python -m source.agents.tools",
+        description="CLI wrapper for OCR agent file tools.",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_save = sub.add_parser("save", help="Save Han-Nom and/or Vietnamese OCR text files.")
+    p_save.add_argument("--han-dir", required=True)
+    p_save.add_argument("--viet-dir", required=True)
+    p_save.add_argument("--han-filename", default="han.txt")
+    p_save.add_argument("--viet-filename", default="viet.txt")
+    p_save.add_argument("--han-text", default=None)
+    p_save.add_argument("--viet-text", default=None)
+    p_save.add_argument("--no-overwrite", action="store_true")
+    p_save.add_argument(
+        "--stdin-json",
+        action="store_true",
+        help="Read JSON payload from stdin with keys: han_text, viet_text, han_filename, viet_filename.",
+    )
+
+    p_read = sub.add_parser("read", help="Read an OCR text file.")
+    p_read.add_argument("--dir", required=True, dest="output_dir")
+    p_read.add_argument("--filename", required=True)
+
+    p_list = sub.add_parser("list", help="List files in an OCR output directory.")
+    p_list.add_argument("--dir", required=True, dest="output_dir")
+
+    args = parser.parse_args(argv)
+
+    if args.command == "save":
+        han_text = args.han_text
+        viet_text = args.viet_text
+        han_filename = args.han_filename
+        viet_filename = args.viet_filename
+        if args.stdin_json:
+            payload = json.loads(sys.stdin.read())
+            if "han_text" in payload:
+                han_text = payload["han_text"]
+            if "viet_text" in payload:
+                viet_text = payload["viet_text"]
+            if payload.get("han_filename"):
+                han_filename = payload["han_filename"]
+            if payload.get("viet_filename"):
+                viet_filename = payload["viet_filename"]
+
+        result = save_han_viet_files(
+            han_dir=args.han_dir,
+            viet_dir=args.viet_dir,
+            han_text=han_text,
+            viet_text=viet_text,
+            han_filename=han_filename,
+            viet_filename=viet_filename,
+            overwrite=not args.no_overwrite,
+        )
+    elif args.command == "read":
+        result = read_text_file(args.output_dir, args.filename)
+    else:
+        result = list_output_files(args.output_dir)
+
+    print(json.dumps(result, ensure_ascii=False))
+    return 0 if result.get("ok") else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(_cli_main())

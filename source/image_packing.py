@@ -426,9 +426,9 @@ def _prune_free_rects(rects: list[tuple[int, int, int, int]]) -> list[tuple[int,
 def _maxrects_pack_width(
     ordered_items: list[tuple[_CropEntry, int, int]],
     bin_w: int,
-    strategy: str,
+    rtl: bool = True,
 ) -> tuple[int, int, list[tuple[_CropEntry, int, int]]] | None:
-    """Đóng gói 2D MaxRects vào dải có chiều rộng `bin_w`, ưu tiên bám góc trên-phải."""
+    """Đóng gói 2D MaxRects theo đúng thứ tự đọc 1..N vào dải có chiều rộng `bin_w`."""
     free_rects: list[tuple[int, int, int, int]] = [(0, 0, bin_w, 10**9)]
     placed: list[tuple[_CropEntry, int, int]] = []
 
@@ -439,14 +439,16 @@ def _maxrects_pack_width(
         for fx, fy, fw, fh in free_rects:
             if item_w > fw or item_h > fh:
                 continue
-            # Đặt bám cạnh phải của vùng trống để có xu hướng phải -> trái
-            px = fx + fw - item_w
             py = fy
             short_side = min(fw - item_w, fh - item_h)
-            if strategy == "bssf":
-                score = (short_side, py, -px)
+            if rtl:
+                # Trang dọc Hán Nôm: bám góc trên-phải -> chảy từ phải qua trái, trên xuống dưới
+                px = fx + fw - item_w
+                score = (py, -(px + item_w), short_side)
             else:
-                score = (py, short_side, -px)
+                # Trang ngang: bám góc trên-trái -> chảy từ trái qua phải, trên xuống dưới
+                px = fx
+                score = (py, px, short_side)
             if best_score is None or score < best_score:
                 best_score = score
                 best_pos = (px, py)
@@ -476,9 +478,7 @@ def _maxrects_pack_width(
         free_rects = _prune_free_rects(new_free)
 
     min_x = min(px for _, px, _ in placed)
-    max_x = max(px + e.slot_w for e, px, _ in placed)
     min_y = min(py for _, _, py in placed)
-    # Chiều cao thực tế không tính row_gap thừa ở cạnh dưới cùng
     return min_x, min_y, placed
 
 
@@ -487,13 +487,16 @@ def _layout_maxrects(
     config: PackConfig,
     label_band_h: int,
 ) -> tuple[int, int, list[tuple[_CropEntry, int, int]]]:
-    """2D Bin Packing (MaxRects) tối ưu diện tích và tỷ lệ khung hình gần vuông."""
+    """2D Bin Packing (MaxRects) giữ nguyên thứ tự đọc 1..N, tối ưu diện tích và tỷ lệ gần vuông."""
+    horiz_count = sum(1 for e in entries if e.crop.width > e.crop.height * 1.4)
+    is_horizontal_page = horiz_count > len(entries) / 2
+    rtl = not is_horizontal_page
+
+    # Giữ nguyên thứ tự gốc 1..N (không đảo theo kích thước)
     items = [
         (e, e.slot_w + config.gap, label_band_h + e.slot_h + config.row_gap)
         for e in entries
     ]
-    ordered_by_side = sorted(items, key=lambda t: (-max(t[1], t[2]), -(t[1] * t[2]), t[0].index))
-    ordered_by_area = sorted(items, key=lambda t: (-(t[1] * t[2]), -max(t[1], t[2]), t[0].index))
 
     min_w = max(iw for _, iw, _ in items)
     max_w = sum(iw for _, iw, _ in items)
@@ -515,24 +518,22 @@ def _layout_maxrects(
     best_result: tuple[int, int, int, int, list[tuple[_CropEntry, int, int]]] | None = None
 
     for bin_w in sorted(candidates):
-        for ordered in (ordered_by_side, ordered_by_area):
-            for strategy in ("top_right", "bssf"):
-                packed = _maxrects_pack_width(ordered, bin_w, strategy)
-                if packed is None:
-                    continue
-                min_x, min_y, placed = packed
-                max_x = max(px + e.slot_w for e, px, _ in placed)
-                max_y = max(py + label_band_h + e.slot_h for e, _, py in placed)
-                used_w = max_x - min_x
-                used_h = max_y - min_y
+        packed = _maxrects_pack_width(items, bin_w, rtl=rtl)
+        if packed is None:
+            continue
+        min_x, min_y, placed = packed
+        max_x = max(px + e.slot_w for e, px, _ in placed)
+        max_y = max(py + label_band_h + e.slot_h for e, _, py in placed)
+        used_w = max_x - min_x
+        used_h = max_y - min_y
 
-                exceeds_max_w = 1 if (
-                    max_allowed_bin_w is not None and used_w + 2 * config.padding > config.max_width
-                ) else 0
-                score = (exceeds_max_w, used_w * used_h * _aspect_penalty(used_w, used_h))
-                if best_score is None or score < best_score:
-                    best_score = score
-                    best_result = (min_x, min_y, used_w, used_h, placed)
+        exceeds_max_w = 1 if (
+            max_allowed_bin_w is not None and used_w + 2 * config.padding > config.max_width
+        ) else 0
+        score = (exceeds_max_w, used_w * used_h * _aspect_penalty(used_w, used_h))
+        if best_score is None or score < best_score:
+            best_score = score
+            best_result = (min_x, min_y, used_w, used_h, placed)
 
     assert best_result is not None
     min_x, min_y, used_w, used_h, placed = best_result
@@ -542,11 +543,9 @@ def _layout_maxrects(
     shift_x = config.padding - min_x
     shift_y = config.padding - min_y
 
-    # Sắp xếp lại danh sách output theo thứ tự index 1..N cho manifest sạch đẹp
-    placed_sorted = sorted(placed, key=lambda t: t[0].index)
     positioned = [
         (entry, px + shift_x, py + shift_y + label_band_h)
-        for entry, px, py in placed_sorted
+        for entry, px, py in placed
     ]
     return canvas_w, canvas_h, positioned
 
