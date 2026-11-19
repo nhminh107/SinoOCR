@@ -13,6 +13,7 @@ from PIL import Image
 
 from .geometry import (
     NON_CONTENT_LABELS,
+    PROJECT_DIR,
     ImageEntry,
     RawDetection,
     Region,
@@ -144,6 +145,97 @@ def save_annotation(output_dir: Path, entry: ImageEntry, annotation: PageAnnotat
     path = annotation_path_for(output_dir, entry)
     _atomic_write_json(path, annotation.to_dict())
     return path
+
+
+def _entry_relative_path(entry: ImageEntry) -> str:
+    try:
+        return entry.path.resolve().relative_to(PROJECT_DIR.resolve()).as_posix()
+    except ValueError:
+        return f"{entry.dataset}/{entry.filename}"
+
+
+def update_summary_json(summary_path: Path, entry: ImageEntry, annotation: PageAnnotation) -> Path:
+    """Cập nhật trực tiếp trang vừa chỉnh sửa vào file JSON tổng (VD: results/layout_all.json)."""
+    if summary_path.is_file():
+        payload = json.loads(summary_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict) or not isinstance(payload.get("pages"), list):
+            payload = {"schema_version": SCHEMA_VERSION, "pages": []}
+    else:
+        payload = {"schema_version": SCHEMA_VERSION, "pages": []}
+
+    pages: list[dict] = payload["pages"]
+    rel_path = _entry_relative_path(entry)
+    ordered_regions = normalize_reading_orders(annotation.regions)
+    directions = {r.direction for r in ordered_regions}
+    script_dir = "horizontal" if directions == {"horizontal"} else "vertical"
+
+    new_bboxes = [
+        {
+            "id": r.id,
+            "bbox": [round(float(v), 2) for v in r.bbox],
+            "polygon": [
+                [round(float(r.bbox[0]), 2), round(float(r.bbox[1]), 2)],
+                [round(float(r.bbox[2]), 2), round(float(r.bbox[1]), 2)],
+                [round(float(r.bbox[2]), 2), round(float(r.bbox[3]), 2)],
+                [round(float(r.bbox[0]), 2), round(float(r.bbox[3]), 2)],
+            ],
+            "label": r.label,
+            "position": int(r.reading_order),
+            "reading_order": int(r.reading_order),
+            "direction": r.direction,
+            "language": r.language,
+            "confidence": 1.0,
+        }
+        for r in ordered_regions
+    ]
+
+    target_idx = next(
+        (
+            i
+            for i, p in enumerate(pages)
+            if p.get("relative_path") == rel_path
+            or (p.get("dataset") == entry.dataset and p.get("filename") == entry.filename)
+        ),
+        None,
+    )
+
+    existing_page = dict(pages[target_idx]) if target_idx is not None else {}
+    existing_page.update(
+        {
+            "relative_path": rel_path,
+            "dataset": entry.dataset,
+            "filename": entry.filename,
+            "image_width": int(annotation.image_width),
+            "image_height": int(annotation.image_height),
+            "image_bbox": [0.0, 0.0, float(annotation.image_width), float(annotation.image_height)],
+            "orientation": normalize_orientation(annotation.orientation),
+            "script_direction": script_dir,
+            "num_regions": len(ordered_regions),
+            "num_titles": sum(1 for r in ordered_regions if r.label == "title"),
+            "page_review_state": annotation.page_review_state,
+            "bboxes": new_bboxes,
+            "regions": [r.to_dict() for r in ordered_regions],
+            "source": {
+                "page_index": annotation.page_index,
+                "image_part": annotation.image_part,
+                "pdf_basename": annotation.pdf_basename,
+                "pdf_page_index": annotation.pdf_page_index,
+            },
+            "updated_at": annotation.updated_at,
+        }
+    )
+
+    if target_idx is not None:
+        pages[target_idx] = existing_page
+    else:
+        pages.append(existing_page)
+
+    payload["schema_version"] = SCHEMA_VERSION
+    payload["generated_at"] = _utc_now_iso()
+    payload["total_images"] = len(pages)
+    payload["datasets"] = sorted({str(p.get("dataset", "")) for p in pages if p.get("dataset")})
+    _atomic_write_json(summary_path, payload)
+    return summary_path
 
 
 def load_annotation(output_dir: Path, entry: ImageEntry, width: int, height: int) -> PageAnnotation:

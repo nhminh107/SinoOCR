@@ -8,25 +8,38 @@ Giải quyết triệt để các hạn chế của Surya OCR trên sách cổ H
   với `body` (cột nội dung cử nhân/tiến sĩ) và `header`/`footer`.
 - Đánh số thứ tự đọc (`reading_order` / `position`) chuẩn Phải qua Trái, Trên xuống Dưới
   (`rtl_ttb`) đối với chữ Hán và Trái qua Phải, Trên xuống Dưới (`ltr_ttb`) đối với chữ Việt.
+- Xuất JSON cho từng ảnh và 1 file JSON tổng cho toàn bộ ảnh (kèm `relative_path`).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 import json
 from pathlib import Path
-from typing import Any
+import tempfile
+from typing import Any, Sequence
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from .detection import DEFAULT_MODEL_DIR, DEFAULT_MODEL_NAME, RegionDetector
 from .geometry import (
+    DEFAULT_FOLDERS,
     PROJECT_DIR,
+     ImageEntry,
     RawDetection,
     Region,
+    collect_images,
     group_detections,
+    natural_sort_key,
     normalize_orientation,
+)
+from .persistence import (
+    SCHEMA_VERSION,
+    annotation_path_for,
+    new_annotation_for_entry,
+    save_annotation,
 )
 from .projection import PageStructure, analyze_page_structure
 
@@ -42,6 +55,36 @@ LABEL_COLORS: dict[str, tuple[int, int, int]] = {
     "Page-footer": (100, 116, 139),
     "ignore": (148, 163, 184),
 }
+
+
+def _to_relative_path(path: Path | str | None, root: Path = PROJECT_DIR) -> str | None:
+    if path is None:
+        return None
+    p = Path(path)
+    try:
+        return p.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return p.as_posix()
+
+
+def _atomic_write_json(path: Path, payload: dict[str, Any]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.stem}-",
+        suffix=".tmp",
+        delete=False,
+    ) as tmp:
+        tmp.write(text)
+        tmp_path = Path(tmp.name)
+    try:
+        tmp_path.replace(path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+    return path
 
 
 @dataclass
@@ -89,34 +132,43 @@ class LayoutResult:
     header_line_y: float | None = None
     left_frame_x: float | None = None
     right_frame_x: float | None = None
+    relative_path: str | None = None
+    image_path: str | None = None
+    dataset: str | None = None
+    filename: str | None = None
 
-    def model_dump(self, mode: str = "json") -> dict[str, Any]:
-        return {
+    def model_dump(self, mode: str = "json", include_raw: bool = True) -> dict[str, Any]:
+        w = int(round(self.image_bbox[2])) if len(self.image_bbox) >= 4 else 0
+        h = int(round(self.image_bbox[3])) if len(self.image_bbox) >= 4 else 0
+        payload: dict[str, Any] = {
+            "relative_path": self.relative_path,
+            "dataset": self.dataset,
+            "filename": self.filename,
+            "image_width": w,
+            "image_height": h,
             "image_bbox": [round(float(v), 2) for v in self.image_bbox],
             "script_direction": self.script_direction,
             "header_line_y": round(float(self.header_line_y), 2) if self.header_line_y is not None else None,
             "left_frame_x": round(float(self.left_frame_x), 2) if self.left_frame_x is not None else None,
             "right_frame_x": round(float(self.right_frame_x), 2) if self.right_frame_x is not None else None,
+            "num_regions": len(self.bboxes),
+            "num_titles": sum(1 for b in self.bboxes if b.label == "title"),
             "bboxes": [b.to_dict() for b in self.bboxes],
             "regions": [r.to_dict() for r in self.regions],
-            "raw_detections": [d.to_dict() for d in self.raw_detections],
         }
+        if include_raw:
+            payload["raw_detections"] = [d.to_dict() for d in self.raw_detections]
+        return payload
 
     to_dict = model_dump
 
+    def save_json(self, output_path: str | Path, *, include_raw: bool = True) -> Path:
+        """Lưu kết quả Layout Analysis của trang hiện tại ra file JSON."""
+        return _atomic_write_json(Path(output_path), self.model_dump(include_raw=include_raw))
+
 
 class SinoLayoutDetector:
-    """Bộ phân tích bố cục (Layout Analysis) chuyên biệt cho văn bản Hán Nôm & Quốc ngữ.
-
-    Kết hợp:
-    1. PP-OCRv6_medium_det (hoặc cached raw_detections / HisDoc1B projection fallback)
-       để phát hiện vùng chữ cấp thấp.
-    2. Phân tích cấu trúc trang (HisDoc1B Algorithm 1): bắt đường kẻ ngang Thượng lan
-       và đường kẻ khung dọc trái/phải.
-    3. Gom cột dọc / dòng ngang, phân loại `title` vs `body` và sắp xếp thứ tự đọc
-       Phải -> Trái (`rtl_ttb`) cho chữ Hán hoặc Trái -> Phải (`ltr_ttb`) cho chữ Việt
-       (HisDoc1B Algorithm 2).
-    """
+    """Bộ phân tích bố cục (Layout Analysis) chuyên biệt cho văn bản Hán Nôm & Quốc ngữ."""
 
     def __init__(
         self,
@@ -178,6 +230,7 @@ class SinoLayoutDetector:
         reading_order: str = "rtl_ttb",
         orientation: int = 0,
         use_cached_raw: bool = True,
+        save_json_path: str | Path | None = None,
     ) -> LayoutResult | dict[str, Any]:
         """Phân tích bố cục trang ảnh, phân biệt rõ `title` vs `body` và đánh số thứ tự đọc."""
         pil_img = self.load_image(image)
@@ -187,8 +240,17 @@ class SinoLayoutDetector:
         structure: PageStructure = analyze_page_structure(pil_img, orientation=angle)
 
         raw_detections: list[RawDetection] | None = None
+        rel_path: str | None = None
+        abs_path_str: str | None = None
+        dataset_name: str | None = None
+        file_name: str | None = None
+
         if isinstance(image, (str, Path)):
             img_path = Path(image)
+            rel_path = _to_relative_path(img_path)
+            abs_path_str = str(img_path.resolve())
+            dataset_name = img_path.parent.name
+            file_name = img_path.name
             if use_cached_raw:
                 raw_detections = self._try_load_cached_raw_detections(img_path, orig_w, orig_h)
             if raw_detections is None:
@@ -221,7 +283,6 @@ class SinoLayoutDetector:
 
         bboxes: list[LayoutBox] = []
         for reg in regions:
-            # Tính độ tự tin trung bình của các raw box nằm trong vùng này
             rx1, ry1, rx2, ry2 = reg.bbox
             member_scores = [
                 d.score
@@ -251,10 +312,121 @@ class SinoLayoutDetector:
             header_line_y=structure.header_line_y,
             left_frame_x=structure.left_frame_x,
             right_frame_x=structure.right_frame_x,
+            relative_path=rel_path,
+            image_path=abs_path_str,
+            dataset=dataset_name,
+            filename=file_name,
         )
+        if save_json_path is not None:
+            result.save_json(save_json_path)
         return result.model_dump(mode="json") if as_dict else result
 
     __call__ = predict
+
+    def predict_batch(
+        self,
+        inputs: Sequence[Path | str] = DEFAULT_FOLDERS,
+        *,
+        summary_json_path: Path | str = PROJECT_DIR / "results" / "layout_all.json",
+        per_page_output_dir: Path | str | None = PROJECT_DIR / "outputs" / "regions",
+        vis_output_dir: Path | str | None = None,
+        overwrite_reviewed: bool = False,
+        include_raw_in_summary: bool = False,
+        verbose: bool = True,
+    ) -> dict[str, Any]:
+        """Chạy pipeline Layout Analysis cho toàn bộ ảnh và xuất 1 file JSON tổng (kèm relative_path).
+
+        - `summary_json_path`: Đường dẫn file JSON tổng chứa kết quả của toàn bộ ảnh (có `relative_path`).
+        - `per_page_output_dir`: Nếu truyền vào (mặc định `outputs/regions`), lưu thêm từng file JSON
+          `<dataset>/<stem>.json` tương thích trực tiếp với giao diện web Sino Studio. Các trang đã
+          được người dùng đánh dấu `"reviewed"` sẽ được bảo toàn trừ khi `overwrite_reviewed=True`.
+        - `vis_output_dir`: Nếu truyền vào, xuất ảnh đã vẽ bounding box cho từng trang.
+        """
+        folders: list[Path] = []
+        single_files: list[Path] = []
+        for item in inputs:
+            p = Path(item)
+            if p.is_dir():
+                folders.append(p)
+            elif p.is_file():
+                single_files.append(p)
+
+        entries: list[ImageEntry] = collect_images(folders) if folders else []
+        for sf in sorted(single_files, key=lambda x: natural_sort_key(x.name)):
+            entries.append(
+                ImageEntry(
+                    path=sf,
+                    dataset=sf.parent.name,
+                    filename=sf.name,
+                    stem=sf.stem,
+                    page_index=None,
+                    image_part=None,
+                    pdf_source=None,
+                )
+            )
+
+        pages_summary: list[dict[str, Any]] = []
+        per_page_dir = Path(per_page_output_dir) if per_page_output_dir is not None else None
+        vis_dir = Path(vis_output_dir) if vis_output_dir is not None else None
+        total = len(entries)
+
+        for idx, entry in enumerate(entries, start=1):
+            rel_path = _to_relative_path(entry.path) or f"{entry.dataset}/{entry.filename}"
+            res = self.predict(entry.path, as_dict=False)
+            assert isinstance(res, LayoutResult)
+
+            # Lưu JSON từng trang cho Sino Studio nếu bật per_page_output_dir
+            if per_page_dir is not None:
+                target_json = annotation_path_for(per_page_dir, entry)
+                should_write = True
+                if target_json.is_file() and not overwrite_reviewed:
+                    try:
+                        existing = json.loads(target_json.read_text(encoding="utf-8"))
+                        if existing.get("page_review_state") == "reviewed":
+                            should_write = False
+                    except (OSError, json.JSONDecodeError):
+                        should_write = False
+                if should_write:
+                    w = int(round(res.image_bbox[2]))
+                    h = int(round(res.image_bbox[3]))
+                    ann = new_annotation_for_entry(entry, w, h)
+                    ann.raw_detections = res.raw_detections
+                    ann.regions = res.regions
+                    save_annotation(per_page_dir, entry, ann)
+
+            if vis_dir is not None:
+                vis_path = vis_dir / entry.dataset / entry.filename
+                vis_path.parent.mkdir(parents=True, exist_ok=True)
+                render_layout_image(entry.path, res).save(vis_path)
+
+            page_dict = res.model_dump(mode="json", include_raw=include_raw_in_summary)
+            page_dict["relative_path"] = rel_path
+            page_dict["source"] = {
+                "page_index": entry.page_index,
+                "image_part": entry.image_part,
+                "pdf_basename": entry.pdf_source.pdf_basename if entry.pdf_source else None,
+                "pdf_page_index": entry.pdf_page_index,
+            }
+            pages_summary.append(page_dict)
+
+            if verbose and (idx == 1 or idx % 25 == 0 or idx == total):
+                print(
+                    f"[{idx}/{total}] {rel_path} -> {len(res.bboxes)} vùng "
+                    f"({page_dict['num_titles']} title, dir={res.script_direction})",
+                    flush=True,
+                )
+
+        summary_payload: dict[str, Any] = {
+            "schema_version": SCHEMA_VERSION,
+            "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "total_images": total,
+            "datasets": sorted({e.dataset for e in entries}),
+            "pages": pages_summary,
+        }
+        out_summary = _atomic_write_json(Path(summary_json_path), summary_payload)
+        if verbose:
+            print(f"Đã lưu file JSON tổng ({total} ảnh) tại: {out_summary}", flush=True)
+        return summary_payload
 
 
 # Alias tương thích ngược cho các script/notebook cũ từng import SuryaLayoutDetector

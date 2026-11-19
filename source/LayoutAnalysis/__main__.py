@@ -1,9 +1,8 @@
-"""CLI cho gói source.LayoutAnalysis: hỗ trợ cả chạy phân tích ảnh/batch lẫn mở giao diện web."""
+"""CLI cho gói source.LayoutAnalysis: hỗ trợ chạy batch toàn bộ ảnh, chạy lẻ 1 ảnh, hoặc mở giao diện web."""
 
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 from typing import Sequence
 
@@ -16,8 +15,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m source.LayoutAnalysis",
         description=(
-            "Phân tích bố cục tư liệu Hán Nôm & chữ Quốc ngữ (PP-OCRv6_medium_det + HisDoc1B) "
-            "hoặc khởi chạy giao diện web cục bộ để duyệt/chỉnh sửa vùng chữ."
+            "Phân tích bố cục tư liệu Hán Nôm & chữ Quốc ngữ (PP-OCRv6_medium_det + HisDoc1B), "
+            "xuất JSON tổng toàn bộ ảnh hoặc khởi chạy giao diện web cục bộ."
         ),
     )
     parser.add_argument(
@@ -26,6 +25,33 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=DEFAULT_FOLDERS,
         help="Các thư mục hoặc tệp ảnh đầu vào (mặc định quét cả 01_QuocTrieuHuongKhoaLuc và 02_TuLiemDaiKhoaLuc).",
+    )
+    parser.add_argument(
+        "--batch",
+        action="store_true",
+        help="Chạy pipeline Layout Analysis cho toàn bộ ảnh trong folders và xuất file JSON tổng.",
+    )
+    parser.add_argument(
+        "--summary-json",
+        type=Path,
+        default=PROJECT_DIR / "results" / "layout_all.json",
+        help="Đường dẫn file JSON tổng cho toàn bộ ảnh (mặc định: results/layout_all.json).",
+    )
+    parser.add_argument(
+        "--save-vis-dir",
+        type=Path,
+        default=None,
+        help="Thư mục lưu ảnh visualize hàng loạt khi chạy --batch (tùy chọn).",
+    )
+    parser.add_argument(
+        "--overwrite-reviewed",
+        action="store_true",
+        help="Ghi đè cả các file JSON từng trang đã được đánh dấu 'reviewed' trong --output-dir.",
+    )
+    parser.add_argument(
+        "--include-raw",
+        action="store_true",
+        help="Bao gồm cả raw_detections trong file JSON tổng.",
     )
     parser.add_argument(
         "--predict",
@@ -43,13 +69,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--save-json",
         type=Path,
         default=None,
-        help="Đường dẫn lưu JSON kết quả khi dùng --predict.",
+        help="Đường dẫn lưu JSON kết quả khi dùng --predict (hoặc ghi đè đường dẫn JSON tổng khi chạy --batch).",
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
         default=PROJECT_DIR / "outputs" / "regions",
-        help="Thư mục lưu JSON annotation và session.json (mặc định: outputs/regions).",
+        help="Thư mục lưu JSON annotation từng ảnh và session.json (mặc định: outputs/regions).",
     )
     parser.add_argument(
         "--model-dir",
@@ -87,22 +113,38 @@ def main(argv: Sequence[str] | None = None) -> int:
             engine=engine,
             annotations_dir=args.output_dir,
         )
-        result = detector.predict(args.predict)
-        data = result.model_dump(mode="json")
-        if args.save_json is not None:
-            args.save_json.parent.mkdir(parents=True, exist_ok=True)
-            args.save_json.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        result = detector.predict(args.predict, save_json_path=args.save_json)
         if args.save_vis is not None:
             vis = render_layout_image(args.predict, result)
             args.save_vis.parent.mkdir(parents=True, exist_ok=True)
             vis.save(args.save_vis)
         print(
-            f"Đã phân tích '{args.predict.name}': {len(result.bboxes)} vùng "
+            f"Đã phân tích '{result.relative_path or args.predict.name}': {len(result.bboxes)} vùng "
             f"(direction={result.script_direction}, header_line_y={result.header_line_y})"
         )
         for box in result.bboxes:
             b = [round(v) for v in box.bbox]
             print(f"  #{box.reading_order:2d} [{box.label:6s}] bbox={b} conf={box.confidence:.2f}")
+        return 0
+
+    if args.batch:
+        engine = "auto" if args.engine == "paddle" and not args.model_dir.exists() else args.engine
+        detector = SinoLayoutDetector(
+            device=args.device,
+            model_dir=args.model_dir,
+            engine=engine,
+            annotations_dir=args.output_dir,
+        )
+        summary_target = args.save_json if args.save_json is not None else args.summary_json
+        detector.predict_batch(
+            args.folders,
+            summary_json_path=summary_target,
+            per_page_output_dir=args.output_dir,
+            vis_output_dir=args.save_vis_dir,
+            overwrite_reviewed=args.overwrite_reviewed,
+            include_raw_in_summary=args.include_raw,
+            verbose=True,
+        )
         return 0
 
     entries = collect_images(args.folders)
@@ -111,8 +153,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     from .server import RegionWorkspace, launch_server
 
+    engine = "auto" if args.engine == "paddle" and not args.model_dir.exists() else args.engine
     workspace = RegionWorkspace(
-        entries, args.output_dir, model_dir=args.model_dir, engine=args.engine, device=args.device,
+        entries,
+        args.output_dir,
+        model_dir=args.model_dir,
+        engine=engine,
+        device=args.device,
+        summary_json_path=args.summary_json,
     )
     try:
         launch_server(workspace, port=args.port, open_browser=not args.no_browser)

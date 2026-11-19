@@ -88,6 +88,13 @@ def analyze_page_structure(
     # Nếu vùng cục bộ tối đặc (bg_sharp < 75), đó là khối gỗ đen đặc chứ không phải nét chữ
     stroke_mask = (small < min(135.0, global_thresh)) & ((bg_sharp - small) > 18.0) & (bg_sharp > 72.0)
 
+    # Xóa các đường kẻ khung dọc dài (> 50% chiều cao trang) khỏi stroke_mask để không dính vào cột chữ sát lề
+    v_line_cols = np.where(ink_mask[int(0.15 * gh) : int(0.85 * gh), :].mean(axis=0) > 0.52)[0]
+    if v_line_cols.size > 0:
+        for vc in v_line_cols:
+            c0, c1 = max(0, int(vc) - 3), min(gw, int(vc) + 4)
+            stroke_mask[:, c0:c1] = False
+
     # 1. Phát hiện đường kẻ ngang chia Thượng lan (nằm trong khoảng 6% - 21% chiều cao trang)
     y_lo, y_hi = int(0.06 * gh), int(0.21 * gh)
     x_mid_lo, x_mid_hi = int(0.12 * gw), int(0.88 * gw)
@@ -261,21 +268,29 @@ def detect_text_regions_projection(
 
     # 1. Phát hiện các cụm chữ ở Thượng lan (nếu có đường kẻ ngang chia tầng)
     y_sep_s = int(st.header_line_y / scale) if st.header_line_y is not None else int(0.135 * gh)
-    if st.header_line_y is not None and y_sep_s > 20:
-        top_band = st.stroke_mask[int(0.008 * gh) : max(20, y_sep_s - 8), x_lo:x_hi]
+    if st.header_line_y is not None and y_sep_s > 30:
+        # Tìm vạch khung viền ngang trên cùng (trong 5.5% đầu trang) để tránh lấy viền khung làm chữ
+        top_border_band = st.ink_mask[: max(10, int(0.055 * gh)), x_lo:x_hi].mean(axis=1)
+        top_border_rows = np.where(top_border_band > 0.28)[0]
+        y_top_start = (int(top_border_rows[-1]) + 8) if top_border_rows.size > 0 else int(0.015 * gh)
+        y_top_end = max(y_top_start + 10, y_sep_s - 10)
+
+        top_band = st.stroke_mask[y_top_start:y_top_end, x_lo:x_hi]
         if top_band.size > 0:
             top_v_proj = np.convolve(top_band.mean(axis=0), np.ones(11) / 11.0, mode="same")
-            top_runs = _find_1d_runs(top_v_proj > 0.022, min_len=max(10, int(45 / scale)))
+            top_runs = _find_1d_runs(top_v_proj > 0.028, min_len=max(12, int(55 / scale)))
             for cs, ce in top_runs:
-                sub_col = st.ink_mask[int(0.008 * gh) : max(20, y_sep_s - 6), x_lo + cs : x_lo + ce]
+                sub_col = st.stroke_mask[y_top_start:y_top_end, x_lo + cs : x_lo + ce]
                 h_proj = np.convolve(sub_col.mean(axis=1), np.ones(7) / 7.0, mode="same")
-                y_runs = _find_1d_runs(h_proj > 0.03, min_len=max(10, int(40 / scale)))
+                y_runs = _find_1d_runs(h_proj > 0.032, min_len=max(12, int(45 / scale)))
                 if y_runs:
-                    vy1 = float((int(0.008 * gh) + y_runs[0][0]) * scale)
-                    vy2 = float((int(0.008 * gh) + y_runs[-1][1]) * scale)
+                    vy1 = float((y_top_start + y_runs[0][0]) * scale)
+                    vy2 = float((y_top_start + y_runs[-1][1]) * scale)
                     vx1 = float((x_lo + cs) * scale)
                     vx2 = float((x_lo + ce) * scale)
-                    _add_box(vx1, vy1, vx2, vy2, score=0.89)
+                    # Cụm chữ Thượng lan thật (như 父子登科) luôn có chiều cao >= 160px
+                    if (vy2 - vy1) >= max(80.0, 0.038 * st.height):
+                        _add_box(vx1, vy1, vx2, vy2, score=0.89)
 
     # 2. Phát hiện các cột dọc trong vùng Chính văn (từ dưới vạch kẻ ngang tới cuối trang)
     body_y_start = y_sep_s + 12 if st.header_line_y is not None else int(0.08 * gh)
@@ -311,7 +326,12 @@ def detect_text_regions_projection(
         if median_peak > 0 and col_peak < 0.45 * median_peak:
             continue
 
-        col_slice = st.stroke_mask[body_y_start:body_y_end, x_lo + cs : x_lo + ce]
+        # Nếu cột nằm sát biên khung dọc trái/phải, co nhẹ 8px khi tính chiếu ngang Y để không dính viền khung nghiêng
+        inner_cs = cs + (8 if cs <= 6 else 0)
+        inner_ce = ce - (8 if ce >= (x_hi - x_lo - 6) else 0)
+        if inner_ce <= inner_cs + 4:
+            inner_cs, inner_ce = cs, ce
+        col_slice = st.stroke_mask[body_y_start:body_y_end, x_lo + inner_cs : x_lo + inner_ce]
         h_proj = np.convolve(col_slice.mean(axis=1), np.ones(11) / 11.0, mode="same")
         y_runs = _find_1d_runs(h_proj > max(0.018, 0.10 * float(h_proj.max())), min_len=max(12, int(45 / scale)))
         if not y_runs:

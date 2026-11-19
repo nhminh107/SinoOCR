@@ -371,9 +371,61 @@ class TestRegionTool(unittest.TestCase):
         if sample_img.is_file():
             detector = SinoLayoutDetector(engine="auto")
             res = detector(sample_img)
+            self.assertEqual(res.relative_path, "data/01_QuocTrieuHuongKhoaLuc/page2_1.png")
             self.assertGreaterEqual(len(res.bboxes), 7)
             vis = render_layout_image(sample_img, res)
             self.assertEqual(vis.size, (orig_w, orig_h))
+
+            with tempfile.TemporaryDirectory() as tmp:
+                summary_path = Path(tmp) / "layout_all.json"
+                summary = detector.predict_batch(
+                    [sample_img],
+                    summary_json_path=summary_path,
+                    per_page_output_dir=None,
+                    verbose=False,
+                )
+                self.assertTrue(summary_path.is_file())
+                self.assertEqual(summary["total_images"], 1)
+                self.assertEqual(
+                    summary["pages"][0]["relative_path"],
+                    "data/01_QuocTrieuHuongKhoaLuc/page2_1.png",
+                )
+
+    def test_layout_visualizer_save_updates_both_page_and_summary_json(self) -> None:
+        from source.LayoutAnalysis.server import RegionWorkspace
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ds_dir = tmp_path / "01_Test"
+            ds_dir.mkdir()
+            Image.new("RGB", (400, 300), color=(255, 255, 255)).save(ds_dir / "page1.png")
+            entries = collect_images([ds_dir])
+            summary_path = tmp_path / "results" / "layout_all.json"
+            ws = RegionWorkspace(entries, tmp_path / "out", summary_json_path=summary_path)
+            ann = ws.load(0)
+            ann.regions = [
+                Region("r1", [20, 20, 120, 200], label="title", reading_order=1),
+                Region("r2", [150, 20, 260, 220], label="body", reading_order=2),
+            ]
+            resp = ws.save(0, ann.to_dict())
+            self.assertTrue(resp["saved"])
+            self.assertTrue(summary_path.is_file())
+            summary_data = json.loads(summary_path.read_text(encoding="utf-8"))
+            self.assertEqual(summary_data["total_images"], 1)
+            self.assertEqual(summary_data["pages"][0]["num_regions"], 2)
+            self.assertEqual(summary_data["pages"][0]["num_titles"], 1)
+            self.assertEqual(summary_data["pages"][0]["regions"][0]["bbox"], [20.0, 20.0, 120.0, 200.0])
+
+            # Chỉnh sửa bbox + đổi type sang body + đổi thứ tự đọc rồi lưu lại -> phải cập nhật ngay
+            edited = resp["annotation"]
+            edited["regions"][0]["bbox"] = [25.0, 25.0, 130.0, 210.0]
+            edited["regions"][0]["label"] = "body"
+            edited["regions"][0]["reading_order"] = 2
+            edited["regions"][1]["reading_order"] = 1
+            ws.save(0, edited)
+            updated_summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            self.assertEqual(updated_summary["pages"][0]["num_titles"], 0)
+            self.assertEqual(updated_summary["pages"][0]["regions"][0]["id"], "r2")
+            self.assertEqual(updated_summary["pages"][0]["regions"][1]["bbox"], [25.0, 25.0, 130.0, 210.0])
 
 
 if __name__ == "__main__":

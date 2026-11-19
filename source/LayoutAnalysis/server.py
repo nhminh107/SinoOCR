@@ -17,13 +17,13 @@ from PIL import Image
 
 from .detection import DEFAULT_MODEL_DIR, RegionDetector
 from .geometry import (
-    CONTENT_ROLES, DIRECTIONS, LABELS, LANGUAGES, REVIEW_STATES,
+    CONTENT_ROLES, DIRECTIONS, LABELS, LANGUAGES, PROJECT_DIR, REVIEW_STATES,
     ImageEntry, bulk_number_regions, clamp_bbox, group_detections,
     merge_regions, normalize_orientation, split_region,
 )
 from .persistence import (
     PageAnnotation, export_crops, load_annotation, load_session,
-    new_annotation_for_entry, save_annotation, save_session,
+    new_annotation_for_entry, save_annotation, save_session, update_summary_json,
 )
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -33,9 +33,11 @@ class RegionWorkspace:
     def __init__(
         self, entries: list[ImageEntry], output_dir: Path, *,
         model_dir: Path = DEFAULT_MODEL_DIR, engine: str = "paddle", device: str = "gpu:0",
+        summary_json_path: Path | None = PROJECT_DIR / "results" / "layout_all.json",
     ) -> None:
         self.entries = entries
         self.output_dir = Path(output_dir)
+        self.summary_json_path = Path(summary_json_path) if summary_json_path is not None else None
         self.detector = RegionDetector(
             model_dir=model_dir, engine=engine, device=device,
             cache_dir=self.output_dir / ".cache" / "paddlex",
@@ -111,9 +113,16 @@ class RegionWorkspace:
         entry = self.entry(image_id)
         with self.save_lock:
             self.load(image_id)
-            save_annotation(self.output_dir, entry, annotation)
+            page_path = save_annotation(self.output_dir, entry, annotation)
             save_session(self.output_dir, entry, image_id)
-        return {"saved": True, "annotation": annotation.to_dict()}
+            if self.summary_json_path is not None:
+                update_summary_json(self.summary_json_path, entry, annotation)
+        return {
+            "saved": True,
+            "annotation": annotation.to_dict(),
+            "annotation_path": str(page_path),
+            "summary_json_path": str(self.summary_json_path) if self.summary_json_path else None,
+        }
 
     def action(self, payload: dict) -> dict:
         image_id = int(payload["image_id"])
