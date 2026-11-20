@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kiểm định dấu □ - OCR Hán Việt</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <strong>Kiểm định dấu □</strong>
+      <span id="summary-badge" class="badge">Đang tải...</span>
+    </div>
+    <div class="controls">
+      <select id="filter-dataset">
+        <option value="ALL">Tất cả tác phẩm</option>
+      </select>
+      <select id="filter-status">
+        <option value="ALL">Tất cả trạng thái</option>
+        <option value="PENDING">Còn chưa duyệt</option>
+        <option value="DONE">Đã duyệt hết</option>
+      </select>
+      <button id="btn-prev" title="Trang trước (Alt+←)">← Trước</button>
+      <button id="btn-next" title="Trang sau (Alt+→)">Sau →</button>
+      <label class="sync-toggle" title="Tự động ghi kết quả đã sửa sang 03_text_sach (giữ nguyên 02_ocr_tho)">
+        <input type="checkbox" id="chk-apply-txt" checked />
+        Ghi ra 03_text_sach
+      </label>
+      <button id="btn-save" class="primary" title="Lưu (Ctrl+S)">Lưu thay đổi (Ctrl+S)</button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="sidebar">
+      <div class="sidebar-header">Danh sách trang có □</div>
+      <div id="page-list" class="page-list"></div>
+    </aside>
+
+    <section class="image-pane">
+      <div class="pane-toolbar">
+        <span id="current-title">Chọn một trang</span>
+        <div class="zoom-controls">
+          <label class="sync-toggle" title="Hiện khung gợi ý các cột OCR từ manifest để tìm dòng lỗi nhanh">
+            <input type="checkbox" id="chk-show-hints" checked />
+            Gợi ý cột
+          </label>
+          <span class="sep">|</span>
+          <button id="btn-mode-pan" class="mode-btn active" title="Kéo di chuyển ảnh (Phím V)">Kéo ảnh (V)</button>
+          <button id="btn-mode-draw" class="mode-btn" title="Vẽ bbox đánh dấu lỗi (Phím B)">Vẽ BBox (B)</button>
+          <span class="sep">|</span>
+          <button id="btn-zoom-out">−</button>
+          <span id="zoom-label">100%</span>
+          <button id="btn-zoom-in">+</button>
+          <button id="btn-zoom-fit">Vừa khung</button>
+        </div>
+      </div>
+      <div id="image-viewport" class="image-viewport">
+        <div id="image-stage" class="image-stage">
+          <img id="page-image" alt="Ảnh trang gốc" draggable="false" />
+          <div id="bbox-layer" class="bbox-layer"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="review-pane">
+      <div class="pane-toolbar">
+        <span>Các dòng chứa □ trên trang</span>
+        <span id="save-toast" class="toast"></span>
+      </div>
+      <div id="rows-container" class="rows-container"></div>
+      <div class="bbox-panel">
+        <div class="pane-toolbar bbox-panel-header">
+          <span>BBox đã đánh dấu trên ảnh (<span id="bbox-count">0</span>)</span>
+          <button id="btn-clear-bboxes" type="button" title="Xóa toàn bộ bbox trên trang hiện tại">Xóa hết</button>
+        </div>
+        <div id="bbox-list" class="bbox-list"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

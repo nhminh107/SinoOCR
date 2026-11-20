@@ -67,3 +67,5 @@ Thumbs.db
 .pytest_cache
 
 submission/*
+save_version/*
+results/*

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hiệu đính từng trang — Hình ảnh / han.txt / viet.txt</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-group">
+      <h1 class="app-title">Hiệu đính 03_text_sach</h1>
+      <label class="control-label">
+        <span>Tác phẩm</span>
+        <select id="dataset-select" aria-label="Chọn tác phẩm"></select>
+      </label>
+    </div>
+
+    <div class="topbar-group">
+      <button id="prev-page-btn" type="button" class="btn" title="Trang trước (Alt+←)">← Trước</button>
+      <select id="page-select" aria-label="Chọn trang ảnh"></select>
+      <span id="page-counter" class="counter">0 / 0</span>
+      <button id="next-page-btn" type="button" class="btn" title="Trang sau (Alt+→)">Sau →</button>
+    </div>
+
+    <div class="topbar-group">
+      <button id="zoom-out-btn" type="button" class="btn btn-icon" title="Thu nhỏ ảnh">-</button>
+      <button id="zoom-fit-btn" type="button" class="btn" title="Vừa khung">Vừa khung</button>
+      <button id="zoom-in-btn" type="button" class="btn btn-icon" title="Phóng to ảnh">+</button>
+      <span id="zoom-label" class="counter">Vừa khung</span>
+    </div>
+
+    <div class="topbar-group">
+      <button id="font-dec-btn" type="button" class="btn btn-icon" title="Giảm cỡ chữ">A-</button>
+      <button id="font-inc-btn" type="button" class="btn btn-icon" title="Tăng cỡ chữ">A+</button>
+      <button id="reload-btn" type="button" class="btn" title="Tải lại trang hiện tại từ ổ đĩa">Tải lại</button>
+      <button id="save-all-btn" type="button" class="btn btn-primary" title="Lưu trang hiện tại vào 03_text_sach và đồng bộ file gộp (Ctrl+S)">Lưu (Ctrl+S)</button>
+      <span id="global-status" class="status-pill" aria-live="polite"></span>
+    </div>
+  </header>
+
+  <section class="note-bar" aria-label="Ghi chú kiểm tra trang hiện tại">
+    <div class="note-label-wrap">
+      <label for="page-note" class="note-label">Ghi chú ảnh</label>
+      <span id="note-badge" class="dirty-badge" hidden>Chưa lưu</span>
+    </div>
+    <textarea
+      id="page-note"
+      class="note-input"
+      rows="1"
+      placeholder="Nhập ghi chú kiểm tra Hán–Việt cho ảnh hiện tại (lưu vào nhat_ky_kiem_tra_han_viet.txt)..."
+    ></textarea>
+    <div class="note-actions">
+      <span id="note-path" class="pane-meta">nhat_ky_kiem_tra_han_viet.txt</span>
+      <button id="save-note-btn" type="button" class="btn btn-sm btn-primary">Lưu note</button>
+    </div>
+  </section>
+
+  <main class="workspace" id="workspace">
+    <!-- Column 1: Source Image -->
+    <section class="pane pane-image" aria-label="Hình ảnh trang">
+      <div class="pane-header">
+        <div class="pane-title-wrap">
+          <h2>1. Hình ảnh</h2>
+          <span id="image-filename" class="pane-meta">—</span>
+        </div>
+        <span class="pane-hint">Kéo ảnh khi phóng to · Ctrl+cuộn để zoom</span>
+      </div>
+      <div id="image-viewport" class="image-viewport">
+        <div id="image-status" class="notice-banner" hidden>Đang tải ảnh...</div>
+        <img id="page-image" alt="Ảnh trang tài liệu" draggable="false" hidden>
+      </div>
+    </section>
+
+    <div class="splitter" data-splitter="0" title="Kéo để thay đổi độ rộng cột"></div>
+
+    <!-- Column 2: Per-page Hán txt -->
+    <section class="pane pane-editor" aria-label="han.txt của trang">
+      <div class="pane-header">
+        <div class="pane-title-wrap">
+          <h2>2. Hán–Nôm</h2>
+          <span id="han-source-badge" class="source-badge"></span>
+          <span id="han-badge" class="dirty-badge" hidden>Chưa lưu</span>
+        </div>
+        <div class="pane-actions">
+          <span id="han-meta" class="pane-meta">0 dòng</span>
+          <button id="save-han-btn" type="button" class="btn btn-sm btn-primary">Lưu Hán</button>
+        </div>
+      </div>
+      <div class="editor-wrap">
+        <div id="han-path-bar" class="path-bar">—</div>
+        <textarea
+          id="han-editor"
+          class="text-editor editor-han"
+          spellcheck="false"
+          wrap="off"
+          placeholder="Nội dung Hán–Nôm của trang hiện tại..."
+        ></textarea>
+      </div>
+    </section>
+
+    <div class="splitter" data-splitter="1" title="Kéo để thay đổi độ rộng cột"></div>
+
+    <!-- Column 3: Per-page Việt txt -->
+    <section class="pane pane-editor" aria-label="viet.txt của trang">
+      <div class="pane-header">
+        <div class="pane-title-wrap">
+          <h2>3. Tiếng Việt</h2>
+          <span id="viet-source-badge" class="source-badge"></span>
+          <span id="viet-badge" class="dirty-badge" hidden>Chưa lưu</span>
+        </div>
+        <div class="pane-actions">
+          <span id="viet-meta" class="pane-meta">0 dòng</span>
+          <button id="save-viet-btn" type="button" class="btn btn-sm btn-primary">Lưu Việt</button>
+        </div>
+      </div>
+      <div class="editor-wrap">
+        <div id="viet-path-bar" class="path-bar">—</div>
+        <textarea
+          id="viet-editor"
+          class="text-editor editor-viet"
+          spellcheck="false"
+          wrap="soft"
+          placeholder="Nội dung tiếng Việt của trang hiện tại..."
+        ></textarea>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
